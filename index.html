@@ -1,0 +1,999 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>高速道路 天気予報シミュレーター</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, sans-serif;
+    background: #f1f5f9;
+    color: #1e293b;
+  }
+  header {
+    background: #1e3a8a;
+    color: #fff;
+    padding: 14px 20px;
+  }
+  header h1 { margin: 0; font-size: 18px; font-weight: 700; }
+  header p { margin: 4px 0 0; font-size: 12px; opacity: .85; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 16px; }
+  .panel {
+    background: #fff;
+    border-radius: 10px;
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    margin-bottom: 14px;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 4px; position: relative; }
+  .field label { font-size: 12px; font-weight: 600; color: #475569; }
+  .field input, .field select {
+    padding: 8px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 14px;
+    background: #fff;
+  }
+  .field input:focus { outline: 2px solid #3b82f6; border-color: transparent; }
+  .w-ic { width: 220px; }
+  .w-sm { width: 110px; }
+  .w-md { width: 200px; }
+  .ac-list {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 2000;
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.15);
+    display: none;
+    max-height: 240px;
+    overflow-y: auto;
+  }
+  .ac-item { padding: 8px 10px; font-size: 12px; cursor: pointer; border-bottom: 1px solid #f1f5f9; }
+  .ac-item:hover { background: #eff6ff; }
+  button.primary {
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 9px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.primary:hover { background: #1d4ed8; }
+  button.primary:disabled { background: #94a3b8; cursor: not-allowed; }
+  .radio-group { display: flex; gap: 12px; align-items: center; padding: 8px 0; }
+  .radio-group label { font-size: 13px; font-weight: 400; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  .route-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .route-chip {
+    border: 2px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    background: #fff;
+  }
+  .route-chip.selected { border-color: #2563eb; background: #eff6ff; font-weight: 600; }
+  .route-chip small { display: block; color: #64748b; font-weight: 400; }
+  #map { height: 420px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 14px; }
+  #status { font-size: 13px; padding: 6px 2px; color: #475569; min-height: 20px; }
+  #status.error { color: #dc2626; font-weight: 600; }
+  .summary { display: flex; flex-wrap: wrap; gap: 20px; font-size: 14px; }
+  .summary .item b { display: block; font-size: 12px; color: #64748b; font-weight: 600; margin-bottom: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left;
+    padding: 8px 10px;
+    background: #f8fafc;
+    border-bottom: 2px solid #e2e8f0;
+    font-size: 12px;
+    color: #475569;
+    white-space: nowrap;
+  }
+  td { padding: 9px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+  tr:hover td { background: #f8fafc; }
+  .wx-icon { font-size: 20px; margin-right: 4px; vertical-align: middle; }
+  .time-range { color: #64748b; font-size: 11px; }
+  .road-name { color: #64748b; font-size: 11px; }
+  .wind-arrow { display: inline-block; font-size: 15px; }
+  .oor { color: #94a3b8; }
+  .note { font-size: 11px; color: #94a3b8; margin-top: 10px; line-height: 1.6; }
+  .table-wrap { overflow-x: auto; }
+  .rain-warn { color: #dc2626; font-weight: 600; }
+  button.ghost { background: #fff; color: #2563eb; border: 1px dashed #93c5fd; border-radius: 6px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
+  button.ghost:hover { background: #eff6ff; }
+  .jam-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 13px; flex-wrap: wrap; }
+  .jam-row input { width: 90px; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; }
+  .jam-row .del { background: #fee2e2; color: #b91c1c; border: none; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 12px; }
+  .badge { display: inline-block; font-size: 10px; padding: 2px 7px; border-radius: 10px; margin: 1px 2px 1px 0; white-space: nowrap; }
+  .badge.mid { background: #fef3c7; color: #92400e; }
+  .badge.high { background: #fee2e2; color: #b91c1c; }
+  .elev { color: #94a3b8; font-size: 11px; }
+  .panel-title { font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 6px; }
+  .panel-help { font-size: 12px; color: #64748b; margin-bottom: 8px; line-height: 1.6; }
+</style>
+
+<header>
+  <h1>🛣️ 高速道路 天気予報シミュレーター</h1>
+  <p>出発IC・到着ICと速度から、各地点の通過時刻とその時間帯の天気・風を予測します</p>
+</header>
+
+<div class="container">
+  <div class="panel">
+    <div class="row">
+      <div class="field">
+        <label>出発IC・地点</label>
+        <input id="fromInput" class="w-ic" placeholder="例: 東京IC" autocomplete="off">
+        <div id="fromList" class="ac-list"></div>
+      </div>
+      <div class="field">
+        <label>経由地(任意)</label>
+        <input id="viaInput" class="w-ic" placeholder="例: 御殿場IC(ルート指定用)" autocomplete="off">
+        <div id="viaList" class="ac-list"></div>
+      </div>
+      <div class="field">
+        <label>到着IC・地点</label>
+        <input id="toInput" class="w-ic" placeholder="例: 名古屋IC" autocomplete="off">
+        <div id="toList" class="ac-list"></div>
+      </div>
+      <button id="routeBtn" class="primary">① ルート検索</button>
+    </div>
+    <div id="routeChips" class="route-chips"></div>
+    <div style="margin-top:12px; border-top:1px dashed #e2e8f0; padding-top:10px;">
+      <div class="panel-title">📥 Google Maps のルートをインポート</div>
+      <div class="panel-help">
+        方法A: Google Maps で経路を表示し、アドレスバーの URL をそのまま貼り付け(ドラッグした経由点も座標として抽出します。短縮URL maps.app.goo.gl は不可)。
+        方法B: GPX / KML ファイルを読み込み(Google マイマップのエクスポートや、経路URLを GPX に変換するツール等)。
+        いずれも OSRM で道路に沿って再構築するため、細部が完全一致しない場合があります。
+      </div>
+      <div class="row">
+        <div class="field" style="flex:1; min-width:280px;">
+          <label>Google Maps の経路URL (https://www.google.com/maps/dir/...)</label>
+          <input id="gmapUrlInput" placeholder="https://www.google.com/maps/dir/東京IC/名古屋IC/@35.3,...">
+        </div>
+        <button id="gmapUrlBtn" class="ghost">URLから取り込み</button>
+        <div class="field">
+          <label>GPX / KML ファイル</label>
+          <input id="trackFileInput" type="file" accept=".gpx,.kml">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <div class="field">
+        <label>時刻の指定方法</label>
+        <div class="radio-group">
+          <label><input type="radio" name="timeMode" value="dep" checked> 出発時刻</label>
+          <label><input type="radio" name="timeMode" value="arr"> 到着時刻</label>
+        </div>
+      </div>
+      <div class="field">
+        <label id="timeLabel">出発時刻</label>
+        <input id="timeInput" type="datetime-local" class="w-md">
+      </div>
+      <div class="field">
+        <label>巡航速度・高速道路 (km/h)</label>
+        <input id="speedInput" type="number" class="w-sm" value="90" min="20" max="140">
+      </div>
+      <div class="field">
+        <label>ばらつき ± (km/h)</label>
+        <input id="deltaInput" type="number" class="w-sm" value="10" min="0" max="50">
+      </div>
+      <div class="field">
+        <label>チェック間隔 (km)</label>
+        <input id="intervalInput" type="number" class="w-sm" value="20" min="5" max="100">
+      </div>
+      <div class="field">
+        <label>勾配補正</label>
+        <div class="radio-group"><label><input type="checkbox" id="gradeChk" checked> 上り坂で減速</label></div>
+      </div>
+      <button id="simBtn" class="primary" disabled>② 天気シミュレーション実行</button>
+    </div>
+    <div id="status"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">🚧 渋滞・規制区間の反映(手入力)</div>
+    <div class="panel-help">
+      リアルタイムの渋滞・規制を無料で取得できる公開APIは現状ないため、公式サイトで確認して区間(出発地からの距離)を入力してください:
+      <a href="https://www.driveplaza.com/traffic/" target="_blank" rel="noopener">ドラぷら(NEXCO東日本)</a> /
+      <a href="https://www.c-nexco.co.jp/" target="_blank" rel="noopener">NEXCO中日本</a> /
+      <a href="https://www.w-nexco.co.jp/" target="_blank" rel="noopener">NEXCO西日本</a> /
+      <a href="https://www.jartic.or.jp/" target="_blank" rel="noopener">JARTIC(全国)</a>
+    </div>
+    <div id="jamRows"></div>
+    <button id="addJamBtn" class="ghost">+ 渋滞・規制区間を追加</button>
+  </div>
+
+  <div id="map"></div>
+
+  <div class="panel" id="summaryPanel" style="display:none">
+    <div class="summary" id="summaryContent"></div>
+  </div>
+
+  <div class="panel" id="resultPanel" style="display:none">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>地点</th>
+            <th>通過時刻 (中央値)</th>
+            <th>天気</th>
+            <th>気温</th>
+            <th>降水確率</th>
+            <th>降水量</th>
+            <th>風向・風速</th>
+            <th>最大瞬間風速</th>
+            <th>規制の目安</th>
+          </tr>
+        </thead>
+        <tbody id="resultBody"></tbody>
+      </table>
+    </div>
+    <div class="note">
+      ※ 巡航速度は「設定値±ばらつき」の一様分布でモンテカルロ試行 (2,000回) し、通過時刻の 10〜90 パーセンタイルを幅として表示しています。<br>
+      ※ 区間ごとの速度は OSRM の道路種別ごとの想定速度を巡航速度に合わせてスケールするため、市街地・一般道・ランプは自動的に遅くなります。上り勾配 (±5%にクランプ) では最大25%減速します。標高は地形データのため、トンネル区間では実際より高く出ることがあります。<br>
+      ※ 天気は中央値時刻に最も近い1時間の予報。降水量・風は通過時刻レンジ内の最大値も併記します。<br>
+      ※ 「規制の目安」は予報値からの推定であり、実際の規制・渋滞は NEXCO 各社・JARTIC の公式サイトで確認してください (JARTIC オープンデータは月次更新の過去データのためリアルタイム反映不可)。<br>
+      ※ データ: ルート = OSRM (OpenStreetMap) / 天気・標高 = Open-Meteo (予報は16日先まで) / 地名検索 = Nominatim
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const TRIALS = 2000;
+const OSRM_SERVERS = [
+  'https://router.project-osrm.org',
+  'https://routing.openstreetmap.de/routed-car'
+];
+
+const WMO = {
+  0:['快晴','☀️'],1:['晴れ','🌤️'],2:['一部曇り','⛅'],3:['曇り','☁️'],
+  45:['霧','🌫️'],48:['霧(着氷)','🌫️'],
+  51:['霧雨(弱)','🌦️'],53:['霧雨','🌦️'],55:['霧雨(強)','🌦️'],
+  56:['着氷性霧雨','🌧️'],57:['着氷性霧雨(強)','🌧️'],
+  61:['雨(弱)','🌧️'],63:['雨','🌧️'],65:['雨(強)','🌧️'],
+  66:['着氷性の雨','🌧️'],67:['着氷性の雨(強)','🌧️'],
+  71:['雪(弱)','🌨️'],73:['雪','🌨️'],75:['雪(強)','❄️'],77:['霧雪','🌨️'],
+  80:['にわか雨(弱)','🌦️'],81:['にわか雨','🌦️'],82:['にわか雨(強)','⛈️'],
+  85:['にわか雪','🌨️'],86:['にわか雪(強)','❄️'],
+  95:['雷雨','⛈️'],96:['雷雨・雹','⛈️'],99:['雷雨・雹(強)','⛈️']
+};
+const COMPASS = ['北','北北東','北東','東北東','東','東南東','南東','南南東','南','南南西','南西','西南西','西','西北西','北西','北北西'];
+const SNOW_CODES = [71, 73, 75, 77, 85, 86];
+
+// NEXCO の運用に近い目安 (風速・時間雨量) から規制リスクを推定
+function regulationRisks(wx) {
+  const risks = [];
+  if (wx.windMax >= 20 || wx.gustMax >= 25) risks.push(['強風: 通行止めの可能性', 'high']);
+  else if (wx.windMax >= 13 || wx.gustMax >= 18) risks.push(['強風: 速度規制の可能性', 'mid']);
+  if (wx.precipMax >= 20) risks.push(['大雨: 通行止め・規制の可能性', 'high']);
+  else if (wx.precipMax >= 8) risks.push(['大雨: 速度規制の可能性', 'mid']);
+  if (wx.codes.some(c => SNOW_CODES.includes(c))) risks.push(['降雪: タイヤ・チェーン規制の可能性', 'high']);
+  if (wx.codes.some(c => c === 45 || c === 48)) risks.push(['濃霧: 視界不良・速度規制の可能性', 'mid']);
+  return risks;
+}
+
+const state = { routes: [], selectedRoute: -1, routeLayers: [], markers: [], profileCache: {}, gradeCache: {} };
+
+const map = L.map('map').setView([36.2, 137.5], 6);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+// ---------- ユーティリティ ----------
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000, rad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * rad, dLon = (lon2 - lon1) * rad;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*rad) * Math.cos(lat2*rad) * Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function percentile(sorted, p) {
+  const idx = (sorted.length - 1) * p;
+  const lo = Math.floor(idx), hi = Math.ceil(idx);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+}
+function fmtTime(ms, refMs) {
+  const d = new Date(ms), r = new Date(refMs);
+  const hm = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  if (d.toDateString() !== r.toDateString()) {
+    return `${d.getMonth()+1}/${d.getDate()} ${hm}`;
+  }
+  return hm;
+}
+function fmtDur(ms) {
+  const m = Math.round(ms / 60000);
+  return m >= 60 ? `${Math.floor(m/60)}時間${String(m%60).padStart(2,'0')}分` : `${m}分`;
+}
+function setStatus(msg, isError) {
+  const el = $('status');
+  el.textContent = msg;
+  el.className = isError ? 'error' : '';
+}
+
+// ---------- IC検索 (Nominatim オートコンプリート) ----------
+function setupAutocomplete(inputId, listId) {
+  const input = $(inputId), list = $(listId);
+  let timer = null;
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    delete input.dataset.lat;
+    const q = input.value.trim();
+    if (q.length < 2) { list.style.display = 'none'; return; }
+    timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=jp&accept-language=ja&limit=6&q=${encodeURIComponent(q)}`);
+        const items = await res.json();
+        list.innerHTML = '';
+        items.forEach(it => {
+          const div = document.createElement('div');
+          div.className = 'ac-item';
+          div.textContent = it.display_name;
+          div.addEventListener('mousedown', e => {
+            e.preventDefault();
+            input.value = it.name || it.display_name.split(',')[0];
+            input.dataset.lat = it.lat;
+            input.dataset.lon = it.lon;
+            list.style.display = 'none';
+          });
+          list.appendChild(div);
+        });
+        list.style.display = items.length ? 'block' : 'none';
+      } catch (e) { /* 検索失敗は無視 */ }
+    }, 450);
+  });
+  input.addEventListener('blur', () => setTimeout(() => list.style.display = 'none', 200));
+}
+setupAutocomplete('fromInput', 'fromList');
+setupAutocomplete('viaInput', 'viaList');
+setupAutocomplete('toInput', 'toList');
+
+async function resolvePoint(input) {
+  if (input.dataset.lat) {
+    return { lat: +input.dataset.lat, lon: +input.dataset.lon, name: input.value };
+  }
+  const q = input.value.trim();
+  if (!q) return null;
+  const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=jp&accept-language=ja&limit=1&q=${encodeURIComponent(q)}`);
+  const items = await res.json();
+  if (!items.length) throw new Error(`「${q}」が見つかりません。候補から選択してください。`);
+  input.dataset.lat = items[0].lat;
+  input.dataset.lon = items[0].lon;
+  return { lat: +items[0].lat, lon: +items[0].lon, name: q };
+}
+
+// ---------- ルート検索 (OSRM) ----------
+async function fetchRoutes(points) {
+  const coordStr = points.map(p => `${p.lon},${p.lat}`).join(';');
+  const query = `alternatives=true&overview=full&geometries=geojson&steps=true&annotations=distance,duration,speed`;
+  let lastErr = null;
+  for (const server of OSRM_SERVERS) {
+    try {
+      const res = await fetch(`${server}/route/v1/driving/${coordStr}?${query}`);
+      const data = await res.json();
+      if (data.code === 'Ok' && data.routes && data.routes.length) return data.routes;
+      lastErr = new Error(data.message || 'ルートが見つかりません');
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('ルート検索に失敗しました');
+}
+
+function clearRouteLayers() {
+  state.routeLayers.forEach(l => map.removeLayer(l));
+  state.routeLayers = [];
+}
+function clearMarkers() {
+  state.markers.forEach(m => map.removeLayer(m));
+  state.markers = [];
+}
+
+function drawRoutes() {
+  clearRouteLayers();
+  state.routes.forEach((r, i) => {
+    const latlngs = r.geometry.coordinates.map(c => [c[1], c[0]]);
+    const isSel = i === state.selectedRoute;
+    const line = L.polyline(latlngs, {
+      color: isSel ? '#2563eb' : '#94a3b8',
+      weight: isSel ? 6 : 4,
+      opacity: isSel ? 0.9 : 0.6
+    }).addTo(map);
+    line.on('click', () => selectRoute(i));
+    state.routeLayers.push(line);
+  });
+  const sel = state.routeLayers[state.selectedRoute];
+  if (sel) { sel.bringToFront(); map.fitBounds(sel.getBounds(), { padding: [30, 30] }); }
+}
+
+function renderRouteChips() {
+  const wrap = $('routeChips');
+  wrap.innerHTML = '';
+  state.routes.forEach((r, i) => {
+    const roads = mainRoadNames(r).slice(0, 3).join('・') || '一般道路';
+    const chip = document.createElement('div');
+    chip.className = 'route-chip' + (i === state.selectedRoute ? ' selected' : '');
+    chip.innerHTML = `ルート${i + 1}: ${(r.distance/1000).toFixed(0)} km<small>${roads}・OSRM想定 ${fmtDur(r.duration * 1000)}</small>`;
+    chip.addEventListener('click', () => selectRoute(i));
+    wrap.appendChild(chip);
+  });
+}
+
+function mainRoadNames(route) {
+  const dist = {};
+  route.legs.forEach(leg => leg.steps.forEach(s => {
+    const n = s.name || s.ref;
+    if (n) dist[n] = (dist[n] || 0) + s.distance;
+  }));
+  return Object.entries(dist).sort((a, b) => b[1] - a[1]).map(e => e[0]);
+}
+
+function selectRoute(i) {
+  state.selectedRoute = i;
+  drawRoutes();
+  renderRouteChips();
+  $('simBtn').disabled = false;
+}
+
+$('routeBtn').addEventListener('click', async () => {
+  try {
+    setStatus('ルートを検索中…');
+    $('routeBtn').disabled = true;
+    clearMarkers();
+    state.profileCache = {};
+    state.gradeCache = {};
+    $('summaryPanel').style.display = 'none';
+    $('resultPanel').style.display = 'none';
+    const from = await resolvePoint($('fromInput'));
+    const to = await resolvePoint($('toInput'));
+    if (!from || !to) throw new Error('出発地と到着地を入力してください');
+    const points = [from];
+    const via = $('viaInput').value.trim() ? await resolvePoint($('viaInput')) : null;
+    if (via) points.push(via);
+    points.push(to);
+    state.routes = await fetchRoutes(points);
+    selectRoute(0);
+    setStatus(`${state.routes.length} 件のルートが見つかりました。ルートを選んで「② 天気シミュレーション実行」を押してください。`);
+  } catch (e) {
+    setStatus(e.message, true);
+  } finally {
+    $('routeBtn').disabled = false;
+  }
+});
+
+// ---------- Google Maps インポート ----------
+function parseGmapUrl(url) {
+  const m = url.match(/\/maps\/dir\/([^@]+)/);
+  if (!m) throw new Error('経路URLではありません。Google Maps で経路表示中の URL (https://.../maps/dir/...) を貼ってください');
+  const names = m[1].split('/')
+    .filter(s => s && !s.startsWith('data='))
+    .map(s => decodeURIComponent(s.replace(/\+/g, ' ')).trim())
+    .filter(Boolean);
+  // data ブロック内の地点座標 (!1d経度!2d緯度)。日本近辺のみ採用
+  const coords = [];
+  for (const mm of url.matchAll(/!1d(1[2-5]\d(?:\.\d+)?)!2d([2-4]\d(?:\.\d+)?)/g)) {
+    const lon = +mm[1], lat = +mm[2];
+    if (lat >= 24 && lat <= 46 && lon >= 122 && lon <= 154) coords.push({ lat, lon });
+  }
+  return { names, coords };
+}
+
+async function importFromGmapUrl() {
+  const url = $('gmapUrlInput').value.trim();
+  if (!url) throw new Error('Google Maps の URL を貼り付けてください');
+  if (/goo\.gl|maps\.app/.test(url)) throw new Error('短縮URLは展開できません。PCブラウザで経路を開き、アドレスバーの長い URL を貼ってください');
+  const { names, coords } = parseGmapUrl(url);
+  let waypoints;
+  if (coords.length >= 2) {
+    waypoints = coords; // 出発・到着・ドラッグ経由点が URL 内の順で入っている
+  } else {
+    if (names.length < 2) throw new Error('URL から出発地・到着地を読み取れませんでした');
+    setStatus('URL の地点名を解決中…');
+    waypoints = [];
+    for (const n of names) {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=jp&accept-language=ja&limit=1&q=${encodeURIComponent(n)}`);
+      const items = await res.json();
+      if (!items.length) throw new Error(`「${n}」を地名解決できませんでした`);
+      waypoints.push({ lat: +items[0].lat, lon: +items[0].lon });
+    }
+  }
+  if (waypoints.length > 25) waypoints = sampleTrack(waypoints, 25);
+  setStatus('道路に沿ってルートを再構築中…');
+  const routes = await fetchRoutes(waypoints);
+  applyImportedRoutes(routes, 'Google Maps URL');
+}
+
+function parseTrackFile(text, fileName) {
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  if (doc.getElementsByTagName('parsererror').length) throw new Error('ファイルを XML として解析できませんでした (KMZ は KML に展開してください)');
+  const pts = [];
+  const root = doc.documentElement.nodeName.toLowerCase();
+  if (root === 'gpx' || /\.gpx$/i.test(fileName)) {
+    for (const tag of ['trkpt', 'rtept', 'wpt']) {
+      if (pts.length) break;
+      for (const n of doc.getElementsByTagName(tag)) {
+        pts.push({ lat: +n.getAttribute('lat'), lon: +n.getAttribute('lon') });
+      }
+    }
+  } else {
+    for (const ls of doc.getElementsByTagName('LineString')) {
+      const c = ls.getElementsByTagName('coordinates')[0];
+      if (!c) continue;
+      c.textContent.trim().split(/\s+/).forEach(t => {
+        const [lon, lat] = t.split(',').map(Number);
+        if (isFinite(lat) && isFinite(lon)) pts.push({ lat, lon });
+      });
+    }
+  }
+  if (pts.length < 2) throw new Error('ルート座標が見つかりませんでした');
+  return pts;
+}
+
+function sampleTrack(pts, maxWp) {
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) {
+    cum.push(cum[i - 1] + haversine(pts[i - 1].lat, pts[i - 1].lon, pts[i].lat, pts[i].lon));
+  }
+  const total = cum[cum.length - 1];
+  const n = Math.min(maxWp, Math.max(2, Math.round(total / 15000) + 2));
+  const out = [];
+  for (let k = 0; k < n; k++) {
+    const target = total * k / (n - 1);
+    let i = 0;
+    while (i < cum.length - 1 && cum[i + 1] < target) i++;
+    out.push(pts[k === n - 1 ? pts.length - 1 : i]);
+  }
+  return out;
+}
+
+function syntheticRoute(pts) {
+  let dist = 0;
+  for (let i = 1; i < pts.length; i++) {
+    dist += haversine(pts[i - 1].lat, pts[i - 1].lon, pts[i].lat, pts[i].lon);
+  }
+  return {
+    distance: dist,
+    duration: dist / 25,
+    geometry: { coordinates: pts.map(p => [p.lon, p.lat]) },
+    legs: []
+  };
+}
+
+function applyImportedRoutes(routes, label) {
+  state.routes = routes;
+  state.profileCache = {};
+  state.gradeCache = {};
+  clearMarkers();
+  $('summaryPanel').style.display = 'none';
+  $('resultPanel').style.display = 'none';
+  selectRoute(0);
+  setStatus(`${label} からルートを取り込みました (${(routes[0].distance / 1000).toFixed(0)} km)。「② 天気シミュレーション実行」へ進んでください。`);
+}
+
+$('gmapUrlBtn').addEventListener('click', async () => {
+  try {
+    $('gmapUrlBtn').disabled = true;
+    await importFromGmapUrl();
+  } catch (e) {
+    setStatus(e.message, true);
+  } finally {
+    $('gmapUrlBtn').disabled = false;
+  }
+});
+
+$('trackFileInput').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    setStatus('ファイルを解析中…');
+    const pts = parseTrackFile(await file.text(), file.name);
+    const sampled = sampleTrack(pts, 25);
+    setStatus('道路に沿ってルートを再構築中…');
+    let routes;
+    try {
+      routes = await fetchRoutes(sampled);
+    } catch (err) {
+      routes = [syntheticRoute(pts)]; // OSRM 不通時は軌跡をそのまま使用 (区間速度は一定)
+    }
+    applyImportedRoutes(routes, `ファイル (${file.name})`);
+  } catch (err) {
+    setStatus(err.message, true);
+  } finally {
+    e.target.value = '';
+  }
+});
+
+// ---------- 速度プロファイル (OSRM 区間速度) ----------
+function buildProfile(route) {
+  const coords = route.geometry.coordinates;
+  const segDist = [], segSpeed = [];
+  let ok = true;
+  route.legs.forEach(leg => {
+    const a = leg.annotation;
+    if (!a || !a.distance) { ok = false; return; }
+    for (let i = 0; i < a.distance.length; i++) {
+      const d = a.distance[i];
+      const v = a.speed && isFinite(a.speed[i]) && a.speed[i] > 0 ? a.speed[i]
+              : (a.duration[i] > 0 ? d / a.duration[i] : 25);
+      segDist.push(d);
+      segSpeed.push(Math.max(v, 1.5)); // m/s
+    }
+  });
+  if (!ok || segDist.length !== coords.length - 1) {
+    // アノテーションが取れない場合は全区間一定速度で代替
+    segDist.length = 0; segSpeed.length = 0;
+    const vAvg = route.duration > 0 ? route.distance / route.duration : 25;
+    for (let i = 1; i < coords.length; i++) {
+      segDist.push(haversine(coords[i-1][1], coords[i-1][0], coords[i][1], coords[i][0]));
+      segSpeed.push(vAvg);
+    }
+  }
+  const cum = [0];
+  for (let i = 0; i < segDist.length; i++) cum.push(cum[i] + segDist[i]);
+  return { coords, segDist, segSpeed, cum, total: cum[cum.length - 1] };
+}
+
+function pointAt(profile, d) {
+  const cum = profile.cum;
+  let lo = 0, hi = cum.length - 1;
+  while (lo < hi - 1) { const m = (lo + hi) >> 1; if (cum[m] <= d) lo = m; else hi = m; }
+  const seg = cum[lo + 1] - cum[lo];
+  const f = seg > 0 ? Math.min(Math.max((d - cum[lo]) / seg, 0), 1) : 0;
+  const c = profile.coords;
+  return {
+    lat: c[lo][1] + (c[lo + 1][1] - c[lo][1]) * f,
+    lon: c[lo][0] + (c[lo + 1][0] - c[lo][0]) * f
+  };
+}
+
+// 距離加重85パーセンタイルの区間速度を「高速巡航」の基準とみなす
+function cruiseBaseSpeed(profile) {
+  const pairs = profile.segSpeed.map((v, i) => [v, profile.segDist[i]]).sort((a, b) => a[0] - b[0]);
+  let acc = 0;
+  const target = profile.total * 0.85;
+  for (const [v, d] of pairs) { acc += d; if (acc >= target) return v; }
+  return pairs.length ? pairs[pairs.length - 1][0] : 25;
+}
+
+// ---------- 標高 → 勾配 (Open-Meteo Elevation, 90m DEM) ----------
+const ELEV_STEP = 1500; // m
+async function fetchGradeInfo(profile) {
+  const pts = [];
+  for (let d = 0; d <= profile.total; d += ELEV_STEP) pts.push(pointAt(profile, d));
+  const elev = [];
+  for (let i = 0; i < pts.length; i += 100) {
+    const chunk = pts.slice(i, i + 100);
+    const url = `https://api.open-meteo.com/v1/elevation?latitude=${chunk.map(p => p.lat.toFixed(4)).join(',')}&longitude=${chunk.map(p => p.lon.toFixed(4)).join(',')}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('標高データの取得に失敗しました');
+    const data = await res.json();
+    elev.push(...data.elevation);
+  }
+  // トンネル等のスパイク緩和のため移動平均 + 勾配±5%クランプ
+  const sm = elev.map((e, i) =>
+    (elev[Math.max(i - 1, 0)] + e + elev[Math.min(i + 1, elev.length - 1)]) / 3);
+  const grades = [];
+  for (let i = 0; i < sm.length - 1; i++) {
+    grades.push(Math.max(-0.05, Math.min(0.05, (sm[i + 1] - sm[i]) / ELEV_STEP)));
+  }
+  return {
+    elevAt: d => sm[Math.min(Math.round(d / ELEV_STEP), sm.length - 1)],
+    gradeAt: d => grades.length ? grades[Math.min(Math.floor(d / ELEV_STEP), grades.length - 1)] : 0
+  };
+}
+
+// ---------- 渋滞・規制区間 (手入力) ----------
+function readJams() {
+  const jams = [];
+  document.querySelectorAll('.jam-row').forEach(row => {
+    const from = +row.querySelector('.jam-from').value;
+    const to = +row.querySelector('.jam-to').value;
+    const v = +row.querySelector('.jam-speed').value;
+    if (isFinite(from) && isFinite(to) && to > from && v > 0) {
+      jams.push({ fromM: from * 1000, toM: to * 1000, vMs: v / 3.6 });
+    }
+  });
+  return jams;
+}
+function addJamRow() {
+  const row = document.createElement('div');
+  row.className = 'jam-row';
+  row.innerHTML = `
+    <input type="number" class="jam-from" placeholder="開始km" min="0"> km 〜
+    <input type="number" class="jam-to" placeholder="終了km" min="0"> km を
+    <input type="number" class="jam-speed" value="20" min="1" max="120"> km/h で通過
+    <button class="del">削除</button>`;
+  row.querySelector('.del').addEventListener('click', () => row.remove());
+  $('jamRows').appendChild(row);
+}
+$('addJamBtn').addEventListener('click', addJamRow);
+
+// ---------- 走行時間の累積テーブル ----------
+// scaledCum: 巡航速度係数でスケールされる自由走行の秒数 / fixedCum: 渋滞区間の固定秒数
+function buildTimeCums(profile, gradeInfo, jams) {
+  const n = profile.segDist.length;
+  const scaledCum = new Float64Array(n + 1);
+  const fixedCum = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) {
+    const mid = (profile.cum[i] + profile.cum[i + 1]) / 2;
+    const jam = jams.find(j => mid >= j.fromM && mid <= j.toM);
+    if (jam) {
+      scaledCum[i + 1] = scaledCum[i];
+      fixedCum[i + 1] = fixedCum[i] + profile.segDist[i] / jam.vMs;
+    } else {
+      let mult = 1;
+      if (gradeInfo) {
+        const g = gradeInfo.gradeAt(mid);
+        if (g > 0) mult = Math.max(1 - 5 * g, 0.75); // 4%勾配で約2割減速
+      }
+      scaledCum[i + 1] = scaledCum[i] + profile.segDist[i] / (profile.segSpeed[i] * mult);
+      fixedCum[i + 1] = fixedCum[i];
+    }
+  }
+  return { scaledCum, fixedCum };
+}
+
+function interpCum(arr, cum, d) {
+  let lo = 0, hi = cum.length - 1;
+  while (lo < hi - 1) { const m = (lo + hi) >> 1; if (cum[m] <= d) lo = m; else hi = m; }
+  const seg = cum[lo + 1] - cum[lo];
+  const f = seg > 0 ? Math.min(Math.max((d - cum[lo]) / seg, 0), 1) : 0;
+  return arr[lo] + (arr[lo + 1] - arr[lo]) * f;
+}
+
+// ---------- チェックポイント生成 ----------
+function buildCheckpoints(route, profile, times, gradeInfo, intervalKm) {
+  const steps = [];
+  let acc = 0;
+  route.legs.forEach(leg => leg.steps.forEach(s => {
+    steps.push({ start: acc, end: acc + s.distance, name: s.name || s.ref || '' });
+    acc += s.distance;
+  }));
+
+  const targets = [];
+  const step = intervalKm * 1000;
+  for (let d = 0; d < profile.total; d += step) targets.push(d);
+  if (targets.length > 1 && profile.total - targets[targets.length - 1] < step * 0.3) targets.pop();
+  targets.push(profile.total);
+
+  return targets.map(d => {
+    const p = pointAt(profile, d);
+    let road = '';
+    for (const s of steps) {
+      if (d >= s.start && d <= s.end && s.name) { road = s.name; break; }
+    }
+    if (!road) {
+      for (const s of steps) {
+        if (s.start <= d && s.name) road = s.name;
+        if (s.start > d) break;
+      }
+    }
+    return {
+      distM: d, lat: p.lat, lon: p.lon, road,
+      scaledT: interpCum(times.scaledCum, profile.cum, d),
+      fixedT: interpCum(times.fixedCum, profile.cum, d),
+      elev: gradeInfo ? gradeInfo.elevAt(d) : null
+    };
+  });
+}
+
+// ---------- モンテカルロ ----------
+function simulateTimes(checkpoints, mode, refMs, vCruiseKmh, vDeltaKmh, cruiseBase) {
+  const perCp = checkpoints.map(() => new Float64Array(TRIALS));
+  const totals = new Float64Array(TRIALS);
+  const last = checkpoints[checkpoints.length - 1];
+  for (let t = 0; t < TRIALS; t++) {
+    const v = Math.max(vCruiseKmh - vDeltaKmh + Math.random() * 2 * vDeltaKmh, 10) / 3.6;
+    const f = v / cruiseBase; // 全区間に掛かる巡航速度係数
+    const travel = (last.scaledT / f + last.fixedT) * 1000;
+    totals[t] = travel;
+    const t0 = mode === 'dep' ? refMs : refMs - travel;
+    for (let i = 0; i < checkpoints.length; i++) {
+      perCp[i][t] = t0 + (checkpoints[i].scaledT / f + checkpoints[i].fixedT) * 1000;
+    }
+  }
+  const stats = arr => {
+    const s = Array.from(arr).sort((a, b) => a - b);
+    return { p10: percentile(s, 0.1), p50: percentile(s, 0.5), p90: percentile(s, 0.9) };
+  };
+  return { perCp: perCp.map(stats), total: stats(totals) };
+}
+
+// ---------- 天気取得 (Open-Meteo) ----------
+async function fetchWeather(checkpoints) {
+  const lats = checkpoints.map(c => c.lat.toFixed(4)).join(',');
+  const lons = checkpoints.map(c => c.lon.toFixed(4)).join(',');
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
+    `&hourly=weather_code,temperature_2m,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m,wind_gusts_10m` +
+    `&wind_speed_unit=ms&timezone=Asia%2FTokyo&forecast_days=16`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('天気データの取得に失敗しました');
+  const data = await res.json();
+  return Array.isArray(data) ? data : [data];
+}
+
+function weatherAt(wx, p10Ms, p50Ms, p90Ms) {
+  const times = wx.hourly.time.map(t => new Date(t).getTime());
+  if (p50Ms > times[times.length - 1] || p50Ms < times[0]) return null;
+  let best = 0, bestDiff = Infinity;
+  const idxInWindow = [];
+  for (let i = 0; i < times.length; i++) {
+    const diff = Math.abs(times[i] - p50Ms);
+    if (diff < bestDiff) { bestDiff = diff; best = i; }
+    if (times[i] >= p10Ms - 3600000 && times[i] <= p90Ms + 3600000) idxInWindow.push(i);
+  }
+  if (!idxInWindow.length) idxInWindow.push(best);
+  const h = wx.hourly;
+  const agg = key => Math.max(...idxInWindow.map(i => h[key][i] ?? 0));
+  return {
+    code: h.weather_code[best],
+    codes: idxInWindow.map(i => h.weather_code[i]),
+    temp: h.temperature_2m[best],
+    prob: h.precipitation_probability ? h.precipitation_probability[best] : null,
+    probMax: h.precipitation_probability ? agg('precipitation_probability') : null,
+    precip: h.precipitation[best],
+    precipMax: agg('precipitation'),
+    wind: h.wind_speed_10m[best],
+    windMax: agg('wind_speed_10m'),
+    windDir: h.wind_direction_10m[best],
+    gust: h.wind_gusts_10m[best],
+    gustMax: agg('wind_gusts_10m')
+  };
+}
+
+// ---------- 実行・表示 ----------
+document.querySelectorAll('input[name="timeMode"]').forEach(r =>
+  r.addEventListener('change', () => {
+    $('timeLabel').textContent = document.querySelector('input[name="timeMode"]:checked').value === 'dep' ? '出発時刻' : '到着時刻';
+  })
+);
+
+$('simBtn').addEventListener('click', async () => {
+  try {
+    const route = state.routes[state.selectedRoute];
+    if (!route) throw new Error('先にルートを検索してください');
+    const timeVal = $('timeInput').value;
+    if (!timeVal) throw new Error('時刻を入力してください');
+    const refMs = new Date(timeVal).getTime();
+    const vCruise = +$('speedInput').value;
+    const vDelta = +$('deltaInput').value;
+    const intervalKm = Math.min(Math.max(+$('intervalInput').value || 20, 5), 100);
+    const mode = document.querySelector('input[name="timeMode"]:checked').value;
+    const useGrade = $('gradeChk').checked;
+
+    $('simBtn').disabled = true;
+    setStatus('速度プロファイルを構築中…');
+    const key = state.selectedRoute;
+    if (!state.profileCache[key]) state.profileCache[key] = buildProfile(route);
+    const profile = state.profileCache[key];
+
+    let gradeInfo = null;
+    if (useGrade) {
+      if (state.gradeCache[key] === undefined) {
+        setStatus('標高データを取得中…');
+        try {
+          state.gradeCache[key] = await fetchGradeInfo(profile);
+        } catch (e) {
+          delete state.gradeCache[key];
+          setStatus('標高データの取得に失敗したため、勾配補正なしで続行します');
+        }
+      }
+      gradeInfo = state.gradeCache[key] || null;
+    }
+
+    const jams = readJams();
+    const times = buildTimeCums(profile, gradeInfo, jams);
+    let checkpoints = buildCheckpoints(route, profile, times, gradeInfo, intervalKm);
+    if (checkpoints.length > 60) {
+      const stride = Math.ceil(checkpoints.length / 60);
+      checkpoints = checkpoints.filter((_, i) => i % stride === 0 || i === checkpoints.length - 1);
+    }
+    const cruiseBase = cruiseBaseSpeed(profile);
+    const sim = simulateTimes(checkpoints, mode, refMs, vCruise, vDelta, cruiseBase);
+
+    setStatus('天気データを取得中…');
+    const weather = await fetchWeather(checkpoints);
+
+    renderResults(checkpoints, sim, weather, mode, refMs, route);
+    setStatus(`完了。高速巡航の基準速度 (OSRM想定) ${(cruiseBase * 3.6).toFixed(0)} km/h → 設定 ${vCruise} km/h にスケール${jams.length ? ` / 渋滞・規制区間 ${jams.length} 件を反映` : ''}${useGrade && gradeInfo ? ' / 勾配補正あり' : ''}`);
+  } catch (e) {
+    setStatus(e.message, true);
+  } finally {
+    $('simBtn').disabled = false;
+  }
+});
+
+function renderResults(checkpoints, sim, weather, mode, refMs, route) {
+  const depMs = mode === 'dep' ? refMs : sim.perCp[0].p50;
+  const fromName = $('fromInput').value || '出発地';
+  const toName = $('toInput').value || '到着地';
+
+  // サマリー
+  $('summaryPanel').style.display = '';
+  const last = sim.perCp[sim.perCp.length - 1];
+  const first = sim.perCp[0];
+  $('summaryContent').innerHTML = `
+    <div class="item"><b>区間</b>${fromName} → ${toName}</div>
+    <div class="item"><b>距離</b>${(route.distance/1000).toFixed(0)} km</div>
+    <div class="item"><b>所要時間 (中央値)</b>${fmtDur(sim.total.p50)} <span class="time-range">(${fmtDur(sim.total.p10)}〜${fmtDur(sim.total.p90)})</span></div>
+    <div class="item"><b>出発時刻</b>${fmtTime(first.p50, depMs)} <span class="time-range">(${fmtTime(first.p10, depMs)}〜${fmtTime(first.p90, depMs)})</span></div>
+    <div class="item"><b>到着時刻</b>${fmtTime(last.p50, depMs)} <span class="time-range">(${fmtTime(last.p10, depMs)}〜${fmtTime(last.p90, depMs)})</span></div>
+  `;
+
+  // テーブル + マーカー
+  clearMarkers();
+  const body = $('resultBody');
+  body.innerHTML = '';
+  checkpoints.forEach((cp, i) => {
+    const st = sim.perCp[i];
+    const wx = weatherAt(weather[i], st.p10, st.p50, st.p90);
+    const tr = document.createElement('tr');
+    const km = (cp.distM / 1000).toFixed(0);
+    const label = i === 0 ? fromName : (i === checkpoints.length - 1 ? toName : `${km} km 地点`);
+
+    let wxCells;
+    let markerEmoji = '❓';
+    let risks = [];
+    if (wx) {
+      const [desc, icon] = WMO[wx.code] || ['不明', '❓'];
+      markerEmoji = icon;
+      risks = regulationRisks(wx);
+      const riskHtml = risks.length
+        ? risks.map(([t, lv]) => `<span class="badge ${lv}">${t}</span>`).join('')
+        : '<span class="time-range">—</span>';
+      const compass = COMPASS[Math.round(wx.windDir / 22.5) % 16];
+      const arrowDeg = (wx.windDir + 180) % 360;
+      const rainCls = wx.precipMax >= 1 ? ' class="rain-warn"' : '';
+      wxCells = `
+        <td><span class="wx-icon">${icon}</span>${desc}</td>
+        <td>${wx.temp.toFixed(0)}℃</td>
+        <td${rainCls}>${wx.prob != null ? wx.prob + '%' : '—'}${wx.probMax != null && wx.probMax !== wx.prob ? `<span class="time-range"> (最大${wx.probMax}%)</span>` : ''}</td>
+        <td${rainCls}>${wx.precip.toFixed(1)} mm${wx.precipMax > wx.precip ? `<span class="time-range"> (最大${wx.precipMax.toFixed(1)})</span>` : ''}</td>
+        <td><span class="wind-arrow" style="transform:rotate(${arrowDeg}deg)">↑</span> ${compass} ${wx.wind.toFixed(1)} m/s</td>
+        <td>${wx.gust.toFixed(1)} m/s${wx.gustMax > wx.gust ? `<span class="time-range"> (最大${wx.gustMax.toFixed(1)})</span>` : ''}</td>
+        <td>${riskHtml}</td>`;
+    } else {
+      wxCells = `<td colspan="7" class="oor">予報範囲外 (16日先まで)</td>`;
+    }
+
+    tr.innerHTML = `
+      <td><b>${label}</b><div class="road-name">${cp.road || ''} ${i > 0 && i < checkpoints.length - 1 ? km + ' km' : ''}${cp.elev != null ? ` <span class="elev">標高${Math.round(cp.elev)}m</span>` : ''}</div></td>
+      <td><b>${fmtTime(st.p50, depMs)}</b><div class="time-range">${fmtTime(st.p10, depMs)}〜${fmtTime(st.p90, depMs)}</div></td>
+      ${wxCells}`;
+    body.appendChild(tr);
+
+    const marker = L.marker([cp.lat, cp.lon], {
+      icon: L.divIcon({
+        className: '',
+        html: `<div style="font-size:22px;text-shadow:0 0 3px #fff,0 0 3px #fff">${markerEmoji}</div>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
+      })
+    }).addTo(map);
+    let popup = `<b>${label}</b><br>通過: ${fmtTime(st.p50, depMs)} (${fmtTime(st.p10, depMs)}〜${fmtTime(st.p90, depMs)})`;
+    if (wx) {
+      const [desc] = WMO[wx.code] || ['不明'];
+      popup += `<br>${desc} ${wx.temp.toFixed(0)}℃<br>風: ${COMPASS[Math.round(wx.windDir/22.5)%16]} ${wx.wind.toFixed(1)} m/s`;
+      if (risks.length) popup += `<br>⚠ ${risks.map(r => r[0]).join(' / ')}`;
+    }
+    marker.bindPopup(popup);
+    state.markers.push(marker);
+  });
+  $('resultPanel').style.display = '';
+}
+
+// 初期値: 現在時刻 + 30分 (10分丸め)
+(function initTime() {
+  const d = new Date(Date.now() + 30 * 60000);
+  d.setMinutes(Math.round(d.getMinutes() / 10) * 10, 0, 0);
+  const pad = n => String(n).padStart(2, '0');
+  $('timeInput').value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+})();
+</script>

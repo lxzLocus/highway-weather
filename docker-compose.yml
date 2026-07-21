@@ -1,0 +1,11 @@
+# ローカルビルドで起動:  docker compose up -d --build
+# CI 済みイメージを使う:  IMAGE=ghcr.io/lxzlocus/highway-weather:latest docker compose up -d
+# (kakeibo と同じ運用。ホスト側ポートは他サービスと被らないよう 8090 にしている)
+services:
+  highway-weather:
+    image: ${IMAGE:-highway-weather:local}
+    build: .
+    container_name: highway-weather
+    restart: unless-stopped
+    ports:
+      - "8090:80"
