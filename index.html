@@ -98,9 +98,69 @@
   td { padding: 9px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
   tr:hover td { background: #f8fafc; }
   .wx-icon { font-size: 20px; margin-right: 4px; vertical-align: middle; }
+  .map-marker-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    transform: translateY(-4px);
+  }
+  .map-weather-emoji {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 12px;
+    background: rgba(255,255,255,.92);
+    border: 2px solid rgba(148,163,184,.5);
+    box-shadow: 0 2px 8px rgba(15,23,42,.18);
+    font-size: 22px;
+    line-height: 1;
+  }
+  .map-wind-mini {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 38px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 700;
+    color: #fff;
+    border: 1px solid rgba(255,255,255,.85);
+    box-shadow: 0 2px 6px rgba(15,23,42,.2);
+    white-space: nowrap;
+  }
+  .map-wind-arrow { display: inline-block; font-size: 10px; line-height: 1; }
   .time-range { color: #64748b; font-size: 11px; }
   .road-name { color: #64748b; font-size: 11px; }
-  .wind-arrow { display: inline-block; font-size: 15px; }
+  .wind-arrow {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    font-size: 14px;
+    line-height: 1;
+    font-weight: 700;
+    margin-right: 6px;
+    transition: transform .15s ease;
+    border: 2px solid rgba(255,255,255,.9);
+    box-shadow: 0 2px 6px rgba(15,23,42,.15);
+  }
+  .wind-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    font-weight: 600;
+  }
   .oor { color: #94a3b8; }
   .note { font-size: 11px; color: #94a3b8; margin-top: 10px; line-height: 1.6; }
   .table-wrap { overflow-x: auto; }
@@ -248,6 +308,7 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="./wind-utils.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const TRIALS = 2000;
@@ -949,14 +1010,15 @@ function renderResults(checkpoints, sim, weather, mode, refMs, route) {
         ? risks.map(([t, lv]) => `<span class="badge ${lv}">${t}</span>`).join('')
         : '<span class="time-range">—</span>';
       const compass = COMPASS[Math.round(wx.windDir / 22.5) % 16];
-      const arrowDeg = (wx.windDir + 180) % 360;
+      const windColor = windUtils.getWindStrengthColor(wx.wind);
+      const windArrowHtml = windUtils.getWindArrowHtml(wx.wind, wx.windDir);
       const rainCls = wx.precipMax >= 1 ? ' class="rain-warn"' : '';
       wxCells = `
         <td><span class="wx-icon">${icon}</span>${desc}</td>
         <td>${wx.temp.toFixed(0)}℃</td>
         <td${rainCls}>${wx.prob != null ? wx.prob + '%' : '—'}${wx.probMax != null && wx.probMax !== wx.prob ? `<span class="time-range"> (最大${wx.probMax}%)</span>` : ''}</td>
         <td${rainCls}>${wx.precip.toFixed(1)} mm${wx.precipMax > wx.precip ? `<span class="time-range"> (最大${wx.precipMax.toFixed(1)})</span>` : ''}</td>
-        <td><span class="wind-arrow" style="transform:rotate(${arrowDeg}deg)">↑</span> ${compass} ${wx.wind.toFixed(1)} m/s</td>
+        <td><span class="wind-badge"><span style="color:${windColor};">${windArrowHtml}</span><span>${compass}</span><span style="color:${windColor};">${wx.wind.toFixed(1)} m/s</span></span></td>
         <td>${wx.gust.toFixed(1)} m/s${wx.gustMax > wx.gust ? `<span class="time-range"> (最大${wx.gustMax.toFixed(1)})</span>` : ''}</td>
         <td>${riskHtml}</td>`;
     } else {
@@ -969,18 +1031,31 @@ function renderResults(checkpoints, sim, weather, mode, refMs, route) {
       ${wxCells}`;
     body.appendChild(tr);
 
+    const markerHtml = wx
+      ? `
+        <div class="map-marker-wrap">
+          <div class="map-weather-emoji">${markerEmoji}</div>
+          <div class="map-wind-mini" style="background:${windUtils.getWindStrengthColor(wx.wind)}; color:#fff;">
+            <span class="map-wind-arrow" style="transform:rotate(${((wx.windDir + 180) % 360)}deg)">↑</span>
+            <span>${wx.wind.toFixed(1)}</span>
+          </div>
+        </div>
+      `
+      : `<div class="map-marker-wrap"><div class="map-weather-emoji">${markerEmoji}</div></div>`;
+
     const marker = L.marker([cp.lat, cp.lon], {
       icon: L.divIcon({
         className: '',
-        html: `<div style="font-size:22px;text-shadow:0 0 3px #fff,0 0 3px #fff">${markerEmoji}</div>`,
-        iconSize: [24, 24],
-        iconAnchor: [12, 12]
+        html: markerHtml,
+        iconSize: [42, 56],
+        iconAnchor: [21, 48]
       })
     }).addTo(map);
     let popup = `<b>${label}</b><br>通過: ${fmtTime(st.p50, depMs)} (${fmtTime(st.p10, depMs)}〜${fmtTime(st.p90, depMs)})`;
     if (wx) {
       const [desc] = WMO[wx.code] || ['不明'];
-      popup += `<br>${desc} ${wx.temp.toFixed(0)}℃<br>風: ${COMPASS[Math.round(wx.windDir/22.5)%16]} ${wx.wind.toFixed(1)} m/s`;
+      const windColor = windUtils.getWindStrengthColor(wx.wind);
+      popup += `<br>${desc} ${wx.temp.toFixed(0)}℃<br>風: <span style="color:${windColor}; font-weight:700;">${COMPASS[Math.round(wx.windDir/22.5)%16]} ${wx.wind.toFixed(1)} m/s</span>`;
       if (risks.length) popup += `<br>⚠ ${risks.map(r => r[0]).join(' / ')}`;
     }
     marker.bindPopup(popup);
