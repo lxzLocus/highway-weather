@@ -362,22 +362,39 @@ function regulationRisks(wx) {
 const state = { routes: [], selectedRoute: -1, routeLayers: [], markers: [], profileCache: {}, gradeCache: {} };
 
 const map = L.map('map').setView([36.2, 137.5], 6);
-L.tileLayer(
-  IS_FILE_PROTOCOL
-    ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
-    : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-  {
-    attribution: IS_FILE_PROTOCOL
-      ? '&copy; OpenStreetMap contributors &copy; CARTO'
-      : '&copy; OpenStreetMap contributors',
-    subdomains: 'abcd',
-    maxZoom: 19
-  }
-}).addTo(map);
+const tileUrl = IS_FILE_PROTOCOL
+  ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+  : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const tileOptions = {
+  attribution: IS_FILE_PROTOCOL
+    ? '&copy; OpenStreetMap contributors &copy; CARTO'
+    : '&copy; OpenStreetMap contributors',
+  subdomains: 'abcd',
+  maxZoom: 19
+};
+L.tileLayer(tileUrl, tileOptions).addTo(map);
 
 if (IS_FILE_PROTOCOL) {
   $('protocolNotice').style.display = 'block';
 }
+
+const windUtils = window.windUtils || {
+  getWindStrengthColor(speedMps) {
+    if (speedMps < 3) return '#22c55e';
+    if (speedMps < 13) return '#f59e0b';
+    if (speedMps < 18) return '#f97316';
+    return '#ef4444';
+  },
+  getWindArrowHtml(speedMps, windDirDeg) {
+    const color = this.getWindStrengthColor(speedMps);
+    const rotation = ((Number(windDirDeg) || 0) + 180) % 360;
+    return `
+      <span class="wind-arrow" style="transform: rotate(${rotation}deg); background: ${color}; box-shadow: 0 0 0 2px rgba(255,255,255,.9), 0 2px 6px rgba(15,23,42,.18); color: #fff;">
+        ↑
+      </span>
+    `;
+  }
+};
 
 // ---------- ユーティリティ ----------
 function haversine(lat1, lon1, lat2, lon2) {
@@ -409,6 +426,53 @@ function setStatus(msg, isError) {
   el.className = isError ? 'error' : '';
 }
 
+function formatDateTimeLocal(date) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function getMinSelectableDateTime() {
+  const date = new Date(Date.now() + 60000);
+  date.setSeconds(0, 0);
+  return formatDateTimeLocal(date);
+}
+
+function jsonpRequest(baseUrl, callbackParam = 'json_callback', timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    const callbackName = `jsonp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const script = document.createElement('script');
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('地名検索がタイムアウトしました'));
+    }, timeoutMs);
+
+    function cleanup() {
+      clearTimeout(timer);
+      delete window[callbackName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    window[callbackName] = data => {
+      cleanup();
+      resolve(data);
+    };
+
+    script.onerror = () => {
+      cleanup();
+      reject(new Error('地名検索に失敗しました'));
+    };
+
+    const joiner = baseUrl.includes('?') ? '&' : '?';
+    script.src = `${baseUrl}${joiner}${callbackParam}=${callbackName}`;
+    document.head.appendChild(script);
+  });
+}
+
+function nominatimSearch(query, limit) {
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=jp&accept-language=ja&limit=${limit}&q=${encodeURIComponent(query)}`;
+  return jsonpRequest(url);
+}
+
 // ---------- IC検索 (Nominatim オートコンプリート) ----------
 function setupAutocomplete(inputId, listId) {
   const input = $(inputId), list = $(listId);
@@ -420,8 +484,7 @@ function setupAutocomplete(inputId, listId) {
     if (q.length < 2) { list.style.display = 'none'; return; }
     timer = setTimeout(async () => {
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=jp&accept-language=ja&limit=6&q=${encodeURIComponent(q)}`);
-        const items = await res.json();
+        const items = await nominatimSearch(q, 6);
         list.innerHTML = '';
         items.forEach(it => {
           const div = document.createElement('div');
@@ -452,8 +515,7 @@ async function resolvePoint(input) {
   }
   const q = input.value.trim();
   if (!q) return null;
-  const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=jp&accept-language=ja&limit=1&q=${encodeURIComponent(q)}`);
-  const items = await res.json();
+  const items = await nominatimSearch(q, 1);
   if (!items.length) throw new Error(`「${q}」が見つかりません。候補から選択してください。`);
   input.dataset.lat = items[0].lat;
   input.dataset.lon = items[0].lon;
@@ -587,8 +649,7 @@ async function importFromGmapUrl() {
     setStatus('URL の地点名を解決中…');
     waypoints = [];
     for (const n of names) {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=jp&accept-language=ja&limit=1&q=${encodeURIComponent(n)}`);
-      const items = await res.json();
+      const items = await nominatimSearch(n, 1);
       if (!items.length) throw new Error(`「${n}」を地名解決できませんでした`);
       waypoints.push({ lat: +items[0].lat, lon: +items[0].lon });
     }
@@ -950,7 +1011,11 @@ $('simBtn').addEventListener('click', async () => {
     if (!route) throw new Error('先にルートを検索してください');
     const timeVal = $('timeInput').value;
     if (!timeVal) throw new Error('時刻を入力してください');
-    const refMs = new Date(timeVal).getTime();
+    const selectedTime = new Date(timeVal).getTime();
+    const minSelectableTime = new Date(getMinSelectableDateTime()).getTime();
+    if (!Number.isFinite(selectedTime)) throw new Error('時刻の形式が正しくありません');
+    if (selectedTime < minSelectableTime) throw new Error('現在より前の日時は選択できません');
+    const refMs = selectedTime;
     const vCruise = +$('speedInput').value;
     const vDelta = +$('deltaInput').value;
     const intervalKm = Math.min(Math.max(+$('intervalInput').value || 20, 5), 100);
@@ -1096,7 +1161,15 @@ function renderResults(checkpoints, sim, weather, mode, refMs, route) {
 (function initTime() {
   const d = new Date(Date.now() + 30 * 60000);
   d.setMinutes(Math.round(d.getMinutes() / 10) * 10, 0, 0);
-  const pad = n => String(n).padStart(2, '0');
-  $('timeInput').value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const timeInput = $('timeInput');
+  timeInput.min = getMinSelectableDateTime();
+  timeInput.value = formatDateTimeLocal(d);
 })();
+
+setInterval(() => {
+  const timeInput = $('timeInput');
+  if (timeInput && timeInput.min) {
+    timeInput.min = getMinSelectableDateTime();
+  }
+}, 60000);
 </script>
