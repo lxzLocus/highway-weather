@@ -176,6 +176,17 @@
   .elev { color: #94a3b8; font-size: 11px; }
   .panel-title { font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 6px; }
   .panel-help { font-size: 12px; color: #64748b; margin-bottom: 8px; line-height: 1.6; }
+  .protocol-note {
+    display: none;
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #fff7ed;
+    border: 1px solid #fdba74;
+    color: #9a3412;
+    font-size: 12px;
+    line-height: 1.6;
+  }
 </style>
 
 <header>
@@ -257,6 +268,9 @@
       <button id="simBtn" class="primary" disabled>② 天気シミュレーション実行</button>
     </div>
     <div id="status"></div>
+    <div id="protocolNotice" class="protocol-note">
+      このページを file:// で直接開くと、OpenStreetMap のタイルや一部の外部 API がブラウザ制約で失敗することがあります。表示が不安定な場合は、http://localhost:8090 などの HTTP 配信で開いてください。
+    </div>
   </div>
 
   <div class="panel">
@@ -312,6 +326,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const TRIALS = 2000;
+const IS_FILE_PROTOCOL = location.protocol === 'file:';
 const OSRM_SERVERS = [
   'https://router.project-osrm.org',
   'https://routing.openstreetmap.de/routed-car'
@@ -347,9 +362,22 @@ function regulationRisks(wx) {
 const state = { routes: [], selectedRoute: -1, routeLayers: [], markers: [], profileCache: {}, gradeCache: {} };
 
 const map = L.map('map').setView([36.2, 137.5], 6);
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '&copy; OpenStreetMap contributors'
+L.tileLayer(
+  IS_FILE_PROTOCOL
+    ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+    : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {
+    attribution: IS_FILE_PROTOCOL
+      ? '&copy; OpenStreetMap contributors &copy; CARTO'
+      : '&copy; OpenStreetMap contributors',
+    subdomains: 'abcd',
+    maxZoom: 19
+  }
 }).addTo(map);
+
+if (IS_FILE_PROTOCOL) {
+  $('protocolNotice').style.display = 'block';
+}
 
 // ---------- ユーティリティ ----------
 function haversine(lat1, lon1, lat2, lon2) {

@@ -17,7 +17,16 @@
 
 ### ローカル(開発)
 
-`index.html` をブラウザで開くだけ。
+`index.html` を HTTP 配信してブラウザで開く。`file://` で直接開くと、OpenStreetMap のタイルや一部の外部 API がブラウザ制約で 403 になることがあります。
+
+Docker を使うなら:
+
+```bash
+docker compose up -d --build
+# → http://localhost:8090
+```
+
+Docker を使わない場合は、任意の静的 HTTP サーバー経由で `index.html` を開いてください。
 
 ### Docker(デプロイ)
 
